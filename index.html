@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Three-Body Problem Simulator</title>
+    <!-- Import Nabla font from Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Offside&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Offside', cursive;
+            background-color: #000;
+        }
+        
+        /* Fullscreen-specific styles */
+        body:fullscreen {
+            background-color: #000;
+        }
+        
+        :fullscreen #controls {
+            opacity: 0.4; /* More transparent when in fullscreen */
+        }
+        
+        :fullscreen #toggle-fullscreen {
+            background-color: #2a2a2a;
+            border-color: #4CAF50;
+        }
+        
+        #main-canvas { 
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 50%;
+            height: 50%;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+            outline: 2px solid #333;
+            outline-offset: -2px;
+        }
+        #graph-container {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            width: 50%;
+            height: 50%;
+            background-color: rgba(0, 0, 0, 0.8);
+            border-top: 1px solid #444;
+            display: flex;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+            outline: 2px solid #333;
+            outline-offset: -2px;
+        }
+        #graph-canvas {
+            width: 60%;
+            height: 100%;
+        }
+        #log-container {
+            width: 40%;
+            height: 100%;
+            border-left: 1px solid #444;
+            color: white;
+            padding: 10px;
+            overflow-y: auto;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: auto;
+        }
+        /* Make log visible only when graph-container is hovered */
+        #graph-container:hover #log-container {
+            opacity: 1;
+        }
+        #log-title {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #ccc;
+        }
+        #log-entries {
+            font-family: 'Nabla', cursive;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            background-color: rgba(50, 50, 70, 0.5);
+            border-radius: 3px;
+        }
+        .log-entry.current-attempt {
+            background-color: rgba(70, 70, 120, 0.7);
+            border-left: 3px solid #4CAF50;
+        }
+        .log-separator {
+            margin: 10px 0;
+        }
+        .log-separator hr {
+            border: 0;
+            height: 1px;
+            background-image: linear-gradient(to right, rgba(70, 70, 120, 0), rgba(120, 120, 180, 0.75), rgba(70, 70, 120, 0));
+        }
+        .log-entry .time {
+            color: #ffcc00;
+            font-weight: bold;
+        }
+        .log-entry .reason {
+            color: #ff6666;
+        }
+        .log-entry .status {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        #graph-title {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 16px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 3px;
+            z-index: 10;
+        }
+        .camera-view {
+            position: absolute;
+            right: 0;
+            width: 50%;
+            height: 33.33%;
+            border-bottom: 1px solid #333;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+            outline: 2px solid #333;
+            outline-offset: -2px;
+        }
+        #camera1 {
+            top: 0;
+        }
+        #camera2 {
+            top: 33.33%;
+        }
+        #camera3 {
+            top: 66.66%;
+        }
+        .camera-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: -235px; /* Start off-screen */
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 12px;
+            border-radius: 0 10px 10px 0;
+            z-index: 100;
+            transition: left 0.3s ease;
+            box-shadow: 3px 0 15px rgba(0, 0, 0, 0.5);
+            max-width: 250px;
+            backdrop-filter: blur(5px);
+            height: auto; /* Let height be determined by content */
+            max-height: calc(50% - 20px); /* Maximum height but no overflow */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow: hidden; /* Hide any overflow */
+        }
+        
+        /* Control trigger area */
+        #control-trigger {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 30px;
+            height: 50%;
+            z-index: 99;
+            background: linear-gradient(to right, transparent, rgba(30, 40, 30, 0.2));
+            border-radius: 0 5px 5px 0;
+        }
+        
+        /* Menu indicator */
+        #control-trigger::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            transform: translateY(-50%);
+            width: 30px;
+            height: 80px;
+            background: linear-gradient(to bottom, 
+                transparent 0%,
+                transparent 10%,
+                #4caf50 10%,
+                #4caf50 15%,
+                transparent 15%,
+                transparent 30%,
+                #4caf50 30%,
+                #4caf50 35%,
+                transparent 35%,
+                transparent 50%,
+                #5aff5a 50%,
+                #5aff5a 55%,
+                transparent 55%,
+                transparent 70%,
+                #4caf50 70%,
+                #4caf50 75%,
+                transparent 75%,
+                transparent 90%,
+                #4caf50 90%,
+                #4caf50 95%,
+                transparent 95%);
+            box-shadow: 0 0 15px rgba(70, 255, 70, 0.3);
+            border-radius: 0 5px 5px 0;
+        }
+        
+        /* Add animated data point */
+        #control-trigger::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 18px;
+            width: 8px;
+            height: 8px;
+            background-color: #5aff5a;
+            border-radius: 50%;
+            transform: translateY(-50%);
+            box-shadow: 0 0 8px #5aff5a;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% {
+                opacity: 0.3;
+                transform: translateY(-50%) scale(0.8);
+            }
+            50% {
+                opacity: 1;
+                transform: translateY(-50%) scale(1.2);
+            }
+            100% {
+                opacity: 0.3;
+                transform: translateY(-50%) scale(0.8);
+            }
+        }
+        
+        /* Show controls when trigger area or controls are hovered */
+        #control-trigger:hover + #controls,
+        #controls:hover {
+            left: 0;
+        }
+        
+        .controls-row {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            margin-bottom: 6px;
+            width: 100%;
+        }
+        
+        /* Make input and button full width but more compact */
+        #seed-input {
+            width: 100%;
+            padding: 6px;
+            margin: 3px 0;
+            background: #000;
+            color: white;
+            border: 1px solid #333;
+            border-radius: 4px;
+            font-family: 'Nabla', cursive;
+            box-sizing: border-box;
+            height: 30px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 6px;
+            margin: 3px 0;
+            cursor: pointer;
+            background: #000000;
+            color: white;
+            border: 1px solid #333;
+            border-radius: 4px;
+            font-family: 'Nabla', cursive;
+            font-weight: 400;
+            box-sizing: border-box;
+            height: 30px;
+        }
+        
+        button:hover {
+            background: #333;
+        }
+        
+        #info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        .axis-label {
+            position: absolute;
+            color: #aaa;
+            font-size: 12px;
+            font-family: 'Nabla', cursive;
+        }
+        #x-axis-label {
+            bottom: 5px;
+            right: 10px;
+        }
+        #y-axis-label {
+            bottom: 50%;
+            left: 5px;
+            transform: rotate(-90deg);
+            transform-origin: left center;
+        }
+        .slider-container {
+            margin-top: 6px;
+            margin-bottom: 6px;
+        }
+        .slider-container label {
+            display: block;
+            margin-bottom: 2px;
+            font-family: 'Nabla', cursive;
+            font-size: 12px;
+        }
+        .slider {
+            width: 100%;
+            background: #000;
+            font-family: 'Nabla', cursive;
+            height: 15px;
+        }
+        #time-value {
+            font-weight: bold;
+        }
+        
+        /* Panel glow effects */
+        .panel-glow {
+            outline-color: #4a9cff !important;
+            box-shadow: inset 0 0 15px rgba(74, 156, 255, 0.8);
+        }
+    </style>
+</head>
+<body>
+    <div id="main-canvas"></div>
+    
+    <div id="graph-container">
+        <div id="graph-title">Trajectory Graph</div>
+        <div id="graph-canvas"></div>
+        <div id="x-axis-label" class="axis-label">Time →</div>
+        <div id="y-axis-label" class="axis-label">Position</div>
+        <div id="log-container">
+            <div id="log-title">Simulation Attempt Log</div>
+            <div id="log-entries"></div>
+        </div>
+    </div>
+    
+    <div id="camera1" class="camera-view">
+        <div class="camera-label">Red Object Camera</div>
+    </div>
+    <div id="camera2" class="camera-view">
+        <div class="camera-label">Green Object Camera</div>
+    </div>
+    <div id="camera3" class="camera-view">
+        <div class="camera-label">Blue Object Camera</div>
+    </div>
+    
+    <div id="control-trigger"></div>
+    <div id="controls">
+        <div class="controls-row">
+            <button id="reset">Reset Simulation</button>
+            <input type="number" id="seed-input" placeholder="Seed">
+            <button id="run-seed">Run Seed</button>
+        </div>
+        <div class="controls-row">
+            <button id="reset-camera">Reset Camera</button>
+            <button id="toggle-fullscreen">Toggle Fullscreen</button>
+        </div>
+        <div class="slider-container">
+            <label for="time-slider">Time Offset: <span id="time-value">0</span>s</label>
+            <input type="range" id="time-slider" min="-1000" max="1000" value="1000" step="10" class="slider">
+        </div>
+        <div class="slider-container">
+            <label for="camera-zoom-slider">Camera Zoom: <span id="zoom-value">20</span></label>
+            <input type="range" id="camera-zoom-slider" min="5" max="50" value="20" step="1" class="slider">
+        </div>
+    </div>
+    <div id="info">
+        <div id="prediction-info"></div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html> 
